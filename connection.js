@@ -23,11 +23,11 @@ export class InventoryConnection {
   }
 
   get canCreate() {
-    return this.canMutate && this.nextRequestId <= 0xffffffff;
+    return this.inventory.ready && this.socket?.readyState === 1 && !this.pendingDelete && this.nextRequestId <= 0xffffffff;
   }
 
   get canMutate() {
-    return this.inventory.ready && this.socket?.readyState === 1 && !this.pendingCreate && !this.pendingDelete;
+    return this.canCreate && !this.pendingCreate;
   }
 
   delete(highIds, label) {
