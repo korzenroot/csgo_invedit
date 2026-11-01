@@ -32,6 +32,7 @@
 <div class="filters">
 <label>Search inventory<input id="inventory-search" type="search" placeholder="Search items&hellip;"></label>
 <label>Category<select id="inventory-category"><option value="">All categories</option></select></label>
+<button id="delete-all" disabled>Delete all</button>
 </div>
 <p id="inventory-count" role="status" aria-live="polite"></p>
 <p id="empty">Connect to receive inventory.</p>
@@ -64,12 +65,19 @@
 <legend class="sr-only">Creation parameters</legend>
 <div id="paint-controls" hidden>
 <label for="wear">Wear</label>
-<input id="wear" type="text" inputmode="decimal" min="0" max="1" autocomplete="off" spellcheck="false">
+<input id="wear" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
 <input id="wear-slider" type="range" step="0.0001" min="0" max="1" aria-label="Wear slider">
 <label>Paint seed<input id="seed" type="number" min="0" max="1000" step="1" value="0"></label>
 </div>
 <label id="stattrak-label" hidden><input id="stattrak" type="checkbox"> StatTrak</label>
 <label id="counter-label" hidden>Starting counter<input id="counter" type="number" min="0" max="4294967295" step="1" value="0"></label>
+<label>Quantity<input id="quantity" type="number" min="1" step="1" value="1"></label>
+<input class="sticker" list="stickers" placeholder="Sticker 1" aria-label="Sticker 1" autocomplete="off">
+<input class="sticker" list="stickers" placeholder="Sticker 2" aria-label="Sticker 2" autocomplete="off">
+<input class="sticker" list="stickers" placeholder="Sticker 3" aria-label="Sticker 3" autocomplete="off">
+<input class="sticker" list="stickers" placeholder="Sticker 4" aria-label="Sticker 4" autocomplete="off">
+<input class="sticker" list="stickers" placeholder="Sticker 5" aria-label="Sticker 5" autocomplete="off">
+<datalist id="stickers"></datalist>
 </fieldset>
 <p id="selection-reason"></p>
 <button id="create" disabled>Add to inventory</button>

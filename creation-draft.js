@@ -5,14 +5,12 @@ export class CreationPreferences {
     this.seed = '0';
     this.statTrak = false;
     this.counter = '0';
+    this.stickers = ['', '', '', '', ''];
   }
 
-  commitWear(text, min, max) {
+  commitWear(text) {
     const value = Number(text);
-    const fallback = this.wear === null ? min : Number(this.wear);
-    this.wear = String(Math.max(min, Math.min(max,
-      String(text).trim() !== '' && Number.isFinite(value) ? value : fallback)));
-    return this.wear;
+    if (String(text).trim() !== '' && Number.isFinite(value)) this.wear = String(value);
   }
 
   build(catalog, key) {
@@ -33,19 +31,24 @@ export class CreationPreferences {
     const paint = catalog.data.paintKits?.find(k => k.id === Number(attrs.get(6)?.value));
     const painted = attrs.has(7) && attrs.has(8);
     const min = record.wearMin ?? paint?.wearMin;
-    const max = record.wearMax ?? paint?.wearMax;
-    let clamped = false, wear = null;
+    let wear = null;
     if (painted) {
-      if (!Number.isFinite(min) || !Number.isFinite(max)) throw new Error('Paint wear limits are unavailable.');
-      const preferred = this.wear === null ? min : Number(this.wear);
-      if (!Number.isFinite(preferred) || (this.wear !== null && String(this.wear).trim() === '')) throw new Error('Invalid paint wear.');
-      wear = Math.max(min, Math.min(max, preferred));
-      clamped = wear !== preferred;
+      if (!Number.isFinite(min)) throw new Error('Paint wear limits are unavailable.');
+      wear = this.wear ?? min;
       set(8, wear);
       set(7, numeric(this.seed, 'Paint seed', 0, 1000, true));
     }
     const statTrak = attrs.has(80);
     if (statTrak) set(80, numeric(this.counter, 'StatTrak counter', 0, 0xffffffff, true));
-    return { item, painted, min, max, wear, clamped, statTrak };
+    const slots = catalog.definitions.get(record.defIndex)?.stickerSlots?.length ?? 0;
+    for (let slot = 0; slot < slots; slot++) {
+      const text = this.stickers[slot].trim();
+      if (!text) continue;
+      const id = /^\d+$/.test(text) ? text : /\((\d+)\)$/.exec(text)?.[1];
+      if (!id) throw new Error(`Sticker ${slot + 1}: pick a sticker from the list or enter its ID.`);
+      set(113 + slot * 4, id);
+      set(114 + slot * 4, 0);
+    }
+    return { item, painted, min, wear, statTrak, slots };
   }
 }

@@ -30,12 +30,12 @@ export class InventoryConnection {
     return this.inventory.ready && this.socket?.readyState === 1 && !this.pendingCreate && !this.pendingDelete;
   }
 
-  delete(highId, label) {
-    if (!this.canMutate || !this.inventory.items.has(highId)) throw new Error('Deletion requires a synchronized connection, an existing item, and no pending request.');
-    const bytes = encodeDestroy(highId);
-    const pending = { highId, label };
+  delete(highIds, label) {
+    if (!this.canMutate || !highIds.length || !highIds.every(id => this.inventory.items.has(id))) throw new Error('Deletion requires a synchronized connection, existing items, and no pending request.');
+    const bytes = new Blob(highIds.map(id => encodeDestroy(id)));
+    const pending = { highIds: new Set(highIds), label: highIds.length === 1 ? `${label}: item ${highIds[0]}` : label };
     this.pendingDelete = pending;
-    this.deletion = { ...pending, status: 'pending', message: `Deleting ${label}: item ${highId}…` };
+    this.deletion = { ...pending, status: 'pending', message: `Deleting ${pending.label}…` };
     try { this.socket.send(bytes); }
     catch (error) {
       this.pendingDelete = null;
@@ -46,7 +46,7 @@ export class InventoryConnection {
     this.deleteTimer = this.setTimer(() => {
       if (this.pendingDelete !== pending) return;
       this.deleteTimer = null;
-      this.deletion = { ...pending, status: 'uncertain', message: `Deletion of ${label} is unconfirmed. Wait or reconnect to inspect the fresh inventory.` };
+      this.deletion = { ...pending, status: 'uncertain', message: `Deletion of ${pending.label} is unconfirmed. Wait or reconnect to inspect the fresh inventory.` };
       this.onChange(this);
     }, 10000);
     this.onChange(this);
@@ -54,20 +54,22 @@ export class InventoryConnection {
 
   trackDeletion(commands) {
     const pending = this.pendingDelete;
-    if (!pending || !commands.some(c => c.type === Command.destroy && c.highId === pending.highId) || this.inventory.items.has(pending.highId)) return;
+    if (!pending || !commands.some(c => c.type === Command.destroy && pending.highIds.has(c.highId))) return;
+    for (const id of pending.highIds) if (this.inventory.items.has(id)) return;
     this.clearTimer(this.deleteTimer);
     this.deleteTimer = null;
     this.pendingDelete = null;
-    this.deletion = { ...pending, status: 'confirmed', message: `Deleted ${pending.label}: item ${pending.highId}.` };
+    this.deletion = { ...pending, status: 'confirmed', message: `Deleted ${pending.label}.` };
   }
 
-  create(template, label) {
+  create(template, label, count = 1) {
     if (!this.canCreate) throw new Error('Creation requires a synchronized open connection and no pending request.');
     const requestId = this.nextRequestId;
     const draft = structuredClone(template);
-    const bytes = encodeCreate(draft, requestId);
-    this.nextRequestId++;
-    const pending = { requestId, label, assignedId: null, observedIds: new Set() };
+    const bytes = new Blob(Array.from({ length: count }, (_, i) => encodeCreate(draft, requestId + i)));
+    this.nextRequestId += count;
+    if (count > 1) label = `${count} × ${label}`;
+    const pending = { requestId, count, label, assignedIds: new Set(), observedIds: new Set() };
     this.pendingCreate = pending;
     this.creation = { status: 'pending', requestId, label, message: `Creating ${label} (request ${requestId})…` };
     try {
@@ -91,13 +93,15 @@ export class InventoryConnection {
     const pending = this.pendingCreate;
     if (!pending) return;
     for (const command of commands) {
-      if (command.type === Command.setId && command.requestId === pending.requestId) pending.assignedId = command.highId;
+      if (command.type === Command.setId && command.requestId >= pending.requestId && command.requestId < pending.requestId + pending.count) pending.assignedIds.add(command.highId);
       if (command.type === Command.create || command.type === Command.modify) pending.observedIds.add(command.item.highId);
     }
-    if (pending.assignedId !== null && pending.observedIds.has(pending.assignedId) && this.inventory.items.has(pending.assignedId)) {
+    if (pending.assignedIds.size < pending.count) return;
+    const ids = [...pending.assignedIds];
+    if (ids.every(id => pending.observedIds.has(id) && this.inventory.items.has(id))) {
       this.clearTimer(this.createTimer);
       this.createTimer = null;
-      this.creation = { status: 'confirmed', requestId: pending.requestId, label: pending.label, highId: pending.assignedId, message: `Created ${pending.label}: item ${pending.assignedId}.` };
+      this.creation = { status: 'confirmed', requestId: pending.requestId, label: pending.label, highId: ids.at(-1), message: `Created ${pending.label}: item ${ids.at(-1)}.` };
       this.pendingCreate = null;
     }
   }
@@ -166,7 +170,7 @@ export class InventoryConnection {
         this.inventory.apply(commands);
         this.trackCreation(commands);
         this.trackDeletion(commands);
-        if (this.inventory.ready) {
+        if (this.inventory.ready && (!this.pendingCreate || commands.some(c => c.type !== Command.setId))) {
           this.clearTimer(this.timer);
           this.timer = null;
           this.publish('Connected');

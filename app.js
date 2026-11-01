@@ -14,6 +14,7 @@ let previousItems = new Map(), previousCatalog = null;
 let drawerReturn = null;
 const narrow = matchMedia('(max-width:999px)');
 const preferences = new CreationPreferences();
+const stickerInputs = [...document.querySelectorAll('.sticker')];
 let draftError = '';
 let renderedWearKey = null, wearDirty = false;
 function creationDraft() {
@@ -133,12 +134,12 @@ function renderSelection() {
   $('stattrak').checked = preferences.statTrak;
   $('paint-controls').hidden = !controls?.painted;
   $('counter-label').hidden = !controls?.statTrak;
+  stickerInputs.forEach((input, slot) => { input.hidden = slot >= (controls?.slots ?? 0); });
   $('delete').hidden = activeTab !== 'inventory';
   $('delete').disabled = !item || !connection.canMutate;
   $('deletion-status').textContent = connection.deletion?.message || '';
   if (controls?.painted) {
-    for (const id of ['wear', 'wear-slider']) { $(id).min = controls.min; $(id).max = controls.max; }
-    const wear = preferences.wear === null ? controls.min : preferences.commitWear(preferences.wear, controls.min, controls.max);
+    const wear = preferences.wear ?? controls.min;
     if (renderedWearKey !== record.key || (!wearDirty && document.activeElement !== $('wear'))) $('wear').value = wear;
     if (renderedWearKey !== record.key) wearDirty = false;
     $('wear-slider').value = wear;
@@ -185,6 +186,7 @@ function rebuildInventory(reset = false) {
 function renderInventory(current) {
   $('status').textContent = current.status; $('message').textContent = current.message;
   $('connect').disabled = current.socket !== null; $('disconnect').disabled = current.socket === null;
+  $('delete-all').disabled = !current.canMutate || !current.inventory.items.size;
   $('count').textContent = `(${current.inventory.items.size} items)`;
   if (!current.inventory.items.has(selectedId)) selectedId = null;
   const changed = previousCatalog !== catalog || previousItems.size !== current.inventory.items.size || [...current.inventory.items].some(([id, item]) => previousItems.get(id) !== item);
@@ -234,7 +236,7 @@ for (const [id, field] of [['wear-slider', 'wear'], ['seed', 'seed'], ['counter'
 }
 function commitWear() {
   if (activeTab !== 'catalog' || $('paint-controls').hidden || !wearDirty) return;
-  preferences.commitWear($('wear').value, Number($('wear').min), Number($('wear').max));
+  preferences.commitWear($('wear').value);
   $('wear').value = preferences.wear;
   wearDirty = false;
   renderSelection();
@@ -244,17 +246,24 @@ $('wear').addEventListener('blur', commitWear);
 $('wear').addEventListener('keydown', event => {
   if (event.key === 'Enter') { event.preventDefault(); commitWear(); }
 });
+stickerInputs.forEach((input, slot) => input.addEventListener('input', () => { preferences.stickers[slot] = input.value; renderSelection(); }));
 function addSelected() {
   if (!connection.canCreate) return;
   commitWear();
-  try { const record = catalog.records.get(selectedKey); connection.create(selectedTemplate(), record.name || record.internalName || record.key); }
+  try { const record = catalog.records.get(selectedKey); connection.create(selectedTemplate(), record.name || record.internalName || record.key, Math.max(1, Math.floor($('quantity').value))); }
   catch (error) { $('creation-status').textContent = error.message; }
 }
 $('create').addEventListener('click', addSelected);
 $('delete').addEventListener('click', () => {
   const item = connection.inventory.items.get(selectedId);
   if (!item || !connection.canMutate) return;
-  try { connection.delete(item.highId, presentation.item(item).name); }
+  try { connection.delete([item.highId], presentation.item(item).name); }
+  catch (error) { $('deletion-status').textContent = error.message; }
+});
+$('delete-all').addEventListener('click', () => {
+  const ids = [...connection.inventory.items.keys()];
+  if (!connection.canMutate || !ids.length || !confirm(`Remove all ${ids.length} items?`)) return;
+  try { connection.delete(ids, `${ids.length} items`); }
   catch (error) { $('deletion-status').textContent = error.message; }
 });
 $('view-created').addEventListener('click', () => {
@@ -276,6 +285,7 @@ async function initializeCatalog() {
   try {
     catalog = await loadCatalog();
     presentation = new Presentation(catalog);
+    $('stickers').replaceChildren(...catalog.data.stickerKits.filter(k => k.kind === 'sticker' && k.id).map(k => new Option(`${k.name} (${k.id})`)));
     if (icons) {
       try { icons.assertCatalog(catalog); }
       catch (error) { icons = null; iconFailure(error); }
