@@ -262,7 +262,7 @@ $('delete').addEventListener('click', () => {
 });
 $('delete-all').addEventListener('click', () => {
   const ids = [...connection.inventory.items.keys()];
-  if (!connection.canMutate || !ids.length || !confirm(`Remove all ${ids.length} items?`)) return;
+  if (!connection.canMutate || !ids.length || !confirm(`Delete all ${ids.length} items?`)) return;
   try { connection.delete(ids, `${ids.length} items`); }
   catch (error) { $('deletion-status').textContent = error.message; }
 });
